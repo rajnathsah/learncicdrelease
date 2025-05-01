@@ -1,0 +1,107 @@
+name: Python application CI, Build, Release, and Containerize
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: write # Need write permission to create releases/tags and upload artifacts
+  packages: write # Need write permission to push to GHCR
+
+jobs:
+  # --- Build and Test Job ---
+  build_and_test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: "pip"
+
+      - name: Install Test Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            echo "Dependency file not found!"
+            exit 1
+          fi
+
+      - name: Test with pytest and check coverage
+        run: |
+          pytest --cov=src --cov=. --cov-report=term-missing --cov-report=xml --cov-fail-under=80    
+
+  # --- Build and Push Docker Image Job ---
+  build_and_push_docker:
+    needs: build_and_test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Docker Image
+        run: |
+          docker build -t ghcr.io/${{ github.repository_owner }}/${{ github.repository }}:latest .
+
+      - name: Push Docker Image
+        run: |
+          docker push ghcr.io/${{ github.repository_owner }}/${{ github.repository }}:latest
+
+      - name: Output Docker Image Details
+        id: docker_meta
+        run: |
+          echo "image_tag=ghcr.io/${{ github.repository_owner }}/${{ github.repository }}:latest" >> $GITHUB_ENV
+          echo "image_digest=$(docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/${{ github.repository_owner }}/${{ github.repository }}:latest)" >> $GITHUB_ENV
+        env:
+          GITHUB_ENV: $GITHUB_ENV
+
+  # --- Create Release Job ---
+  create_release:
+    needs: build_and_push_docker
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: "v${{ github.run_number }}"
+          release_name: "Release v${{ github.run_number }}"
+          body: |
+            Automated release created by CI/CD workflow.
+            - Docker Image: ghcr.io/${{ github.repository_owner }}/${{ github.repository }}:latest
+          draft: false
+          prerelease: false
+
+  # --- Deploy Job ---
+  deploy:
+    needs: build_and_push_docker
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy Code to Runner
+        run: |
+          mkdir -p /home/raj/deployed_app
+          rsync -av --progress ./ /home/raj/deployed_app --exclude .git --exclude .github --exclude .gitignore --exclude .pre-commit-config.yml
+          echo "Code deployed to /home/raj/deployed_app"
+
+

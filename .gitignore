@@ -1,0 +1,34 @@
+# Python virtual environment
+.venv/
+venv/
+env/
+
+# Python cache files and artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+wheels/
+*.egg
+
+# Testing artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE / Editor specific files (optional but common)
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS specific files (optional but common)
+.DS_Store
+Thumbs.db
+
+# Add other specific files/directories you want to ignore below
+# e.g., .env files containing secrets
+.env
